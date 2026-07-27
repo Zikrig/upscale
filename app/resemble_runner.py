@@ -10,8 +10,15 @@ import torchaudio
 from config import MODEL_DIR
 
 
-def _stub_deepspeed() -> None:
-    """Minimal deepspeed shim so resemble-enhance imports without the real package."""
+def _ensure_deepspeed() -> None:
+    """Use real deepspeed if installed; otherwise provide a minimal stub."""
+    try:
+        import deepspeed  # noqa: F401
+        import deepspeed.accelerator  # noqa: F401
+
+        return
+    except Exception:
+        pass
 
     class DeepSpeedConfig:
         def __init__(self, *args, **kwargs):
@@ -28,7 +35,6 @@ def _stub_deepspeed() -> None:
     deepspeed = types.ModuleType("deepspeed")
     deepspeed.DeepSpeedConfig = DeepSpeedConfig
     deepspeed.init_distributed = lambda *a, **k: None
-    deepspeed._resemble_stub = True
 
     accelerator = types.ModuleType("deepspeed.accelerator")
     accelerator.get_accelerator = lambda: _Accelerator()
@@ -46,17 +52,6 @@ def _stub_deepspeed() -> None:
     sys.modules["deepspeed.runtime.utils"] = runtime_utils
 
 
-def _patch_denoiser_train_import() -> None:
-    """Avoid denoiser.train -> Engine/DeepSpeed import chain for inference."""
-    from resemble_enhance.denoiser.denoiser import Denoiser
-    from resemble_enhance.denoiser.hparams import HParams
-
-    train = types.ModuleType("resemble_enhance.denoiser.train")
-    train.Denoiser = Denoiser
-    train.HParams = HParams
-    sys.modules["resemble_enhance.denoiser.train"] = train
-
-
 def _setup_cache() -> None:
     os.environ.setdefault("HF_HOME", MODEL_DIR)
     os.environ.setdefault("TORCH_HOME", MODEL_DIR)
@@ -66,8 +61,7 @@ def _setup_cache() -> None:
 @lru_cache(maxsize=1)
 def _load_enhancer(device: str):
     _setup_cache()
-    _stub_deepspeed()
-    _patch_denoiser_train_import()
+    _ensure_deepspeed()
 
     from resemble_enhance.enhancer.download import download
     from resemble_enhance.enhancer.enhancer import Enhancer
