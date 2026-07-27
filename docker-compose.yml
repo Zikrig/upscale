@@ -1,0 +1,15 @@
+services:
+  cleaner:
+    build: .
+    container_name: audio-cleaner
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - TORCH_HOME=/models
+      - HF_HOME=/models
+      - XDG_CACHE_HOME=/models
+    volumes:
+      - ./input:/input
+      - ./output:/output
+      - ./models:/models
+    command: python3 main.py
