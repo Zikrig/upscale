@@ -1,9 +1,8 @@
-"""Dub cleaned vocals into English with voice cloning + soft timeline match.
+"""Dub cleaned vocals into English with voice cloning.
 
-Quality-first approach:
-  - merge Whisper fragments into longer phrases (not 1s crumbs)
-  - XTTS clones voice; prefer its native `speed` over heavy time-stretch
-  - only gentle stretch/pad; keep temp disk usage near zero
+No speed-up / slow-down. Phrases keep natural XTTS tempo.
+Placement is sequential so clips never overlap:
+  start = max(original_start, end_of_previous_clip)
 """
 
 from __future__ import annotations
@@ -27,8 +26,6 @@ from config import (
     MODEL_DIR,
     OUTPUT,
     REF_SECONDS,
-    STRETCH_MAX,
-    STRETCH_MIN,
     TMP_DIR,
     TRANSLATED,
     WHISPER_MODEL,
@@ -168,10 +165,12 @@ def merge_phrases(segments: list[dict]) -> list[dict]:
     return merged
 
 
-def write_transcript(base: Path, text: str, segments: list[dict]) -> None:
+def write_transcript(base: Path, text: str, segments: list[dict], timed: list[dict] | None = None) -> None:
+    """Write full text + SRT. If timed is given, use actual placed starts/ends."""
     base.with_suffix(".txt").write_text(text + "\n", encoding="utf-8")
+    rows = timed if timed is not None else segments
     lines: list[str] = []
-    for i, seg in enumerate(segments, 1):
+    for i, seg in enumerate(rows, 1):
         lines += [
             str(i),
             f"{_format_ts(seg['start'])} --> {_format_ts(seg['end'])}",
@@ -204,15 +203,13 @@ def load_xtts():
     return tts
 
 
-def xtts_speak_array(tts, text: str, speaker_wav: Path, speed: float) -> np.ndarray:
-    """Synthesize in-memory to avoid filling /tmp with thousands of WAVs."""
-    speed = float(np.clip(speed, 0.6, 1.6))
+def xtts_speak_array(tts, text: str, speaker_wav: Path) -> np.ndarray:
+    """Natural-speed synthesis in memory (no tempo change)."""
     wav = tts.tts(
         text=text,
         speaker_wav=str(speaker_wav),
         language="en",
         split_sentences=True,
-        speed=speed,
     )
     audio = np.asarray(wav, dtype=np.float32)
     if audio.ndim > 1:
@@ -220,78 +217,66 @@ def xtts_speak_array(tts, text: str, speaker_wav: Path, speed: float) -> np.ndar
     return audio
 
 
-def fit_gently(audio: np.ndarray, sr: int, target_sec: float) -> np.ndarray:
-    """Only light stretch; if still off — pad silence or trim edges (don't wreck voice)."""
-    import librosa
-
-    target_n = max(int(round(target_sec * sr)), 1)
-    cur_sec = max(len(audio) / sr, 1e-6)
-    rate = cur_sec / max(target_sec, 1e-6)
-
-    if abs(rate - 1.0) >= 0.04:
-        rate = float(np.clip(rate, STRETCH_MIN, STRETCH_MAX))
-        audio = librosa.effects.time_stretch(audio.astype(np.float32), rate=rate)
-
-    if len(audio) > target_n:
-        # trim evenly instead of hard-chopping the end only
-        excess = len(audio) - target_n
-        left = excess // 2
-        audio = audio[left : left + target_n]
-    elif len(audio) < target_n:
-        pad = target_n - len(audio)
-        left = pad // 2
-        audio = np.pad(audio, (left, pad - left))
-
-    return audio.astype(np.float32)
-
-
 def dub_segments(
     tts,
     segments: list[dict],
     speaker_wav: Path,
-    total_duration: float,
     sr: int = SR,
-) -> np.ndarray:
-    timeline = np.zeros(int(round(total_duration * sr)) + sr, dtype=np.float32)
+) -> tuple[np.ndarray, list[dict]]:
+    """Place phrases at natural length without overlap.
+
+    Each clip starts at max(original_start, previous_end).
+    Timeline grows if English runs longer than the source.
+    """
+    chunks: list[tuple[int, np.ndarray]] = []
+    timed: list[dict] = []
+    cursor = 0.0  # seconds, end of last placed clip
 
     for i, seg in enumerate(tqdm(segments, desc="  dubbing", leave=False)):
         text = seg["text"].strip()
         if not text:
             continue
 
-        target = max(seg["end"] - seg["start"], 0.25)
-        # Rough native speed hint: English often needs slight speed-up vs RU timing
-        approx_chars_per_sec = max(len(text) / target, 1e-3)
-        # ~14 chars/sec is a calm English speaking rate
-        speed = float(np.clip(approx_chars_per_sec / 14.0, 0.85, 1.35))
-
         try:
-            audio = xtts_speak_array(tts, text, speaker_wav, speed=speed)
+            audio = xtts_speak_array(tts, text, speaker_wav)
         except Exception as exc:
             print(f"  ! phrase {i} TTS failed: {exc}")
             continue
 
-        fitted = fit_gently(audio, sr, target)
-        start = int(round(seg["start"] * sr))
-        end = start + len(fitted)
-        if start >= len(timeline):
-            continue
-        if end > len(timeline):
-            fitted = fitted[: len(timeline) - start]
-            end = len(timeline)
+        start_sec = max(float(seg["start"]), cursor)
+        start = int(round(start_sec * sr))
+        dur_sec = len(audio) / sr
+        end_sec = start_sec + dur_sec
 
-        fade = min(int(0.02 * sr), max(len(fitted) // 8, 1))
+        fade = min(int(0.015 * sr), max(len(audio) // 10, 1))
         if fade > 1:
             ramp = np.linspace(0, 1, fade, dtype=np.float32)
-            fitted[:fade] *= ramp
-            fitted[-fade:] *= ramp[::-1]
+            audio = audio.copy()
+            audio[:fade] *= ramp
+            audio[-fade:] *= ramp[::-1]
 
-        timeline[start:end] += fitted
+        chunks.append((start, audio))
+        timed.append({"start": start_sec, "end": end_sec, "text": text})
+        cursor = end_sec
+
+    total_n = int(round(cursor * sr)) + sr
+    if chunks:
+        last_start, last_audio = chunks[-1]
+        total_n = max(total_n, last_start + len(last_audio) + sr)
+
+    timeline = np.zeros(total_n, dtype=np.float32)
+    for start, audio in chunks:
+        end = start + len(audio)
+        if end > len(timeline):
+            timeline = np.pad(timeline, (0, end - len(timeline) + sr))
+        timeline[start:end] += audio
 
     peak = float(np.max(np.abs(timeline)) + 1e-8)
     if peak > 0.99:
         timeline *= 0.99 / peak
-    return timeline[: int(round(total_duration * sr))]
+
+    print(f"  timeline {len(timeline) / sr:.1f}s (no overlap, natural tempo)")
+    return timeline, timed
 
 
 def cleanup_work(base_name: str) -> None:
@@ -309,23 +294,22 @@ def translate_file(wav: Path, out_dir: Path, tts, force: bool = False) -> Path |
         print(f"Skip {wav.name} (exists: {out_wav.name})")
         return out_wav
 
-    print(f"Translating {wav.name} → English (cloned, quality mode)")
+    print(f"Translating {wav.name} → English (clone, natural speed, no overlap)")
     cleanup_work(base_name)
 
-    text, segments, duration = transcribe_to_english(wav)
-    # Prefer cached transcript if re-running only audio and srt already good? always refresh
+    text, segments, _duration = transcribe_to_english(wav)
     phrases = merge_phrases(segments)
-    write_transcript(stem, text, phrases)
 
     work = Path(TMP_DIR) / f"dub_{base_name}"
     work.mkdir(parents=True, exist_ok=True)
     ref = extract_reference(wav, work / "speaker_ref.wav")
 
-    dubbed = dub_segments(tts, phrases, ref, duration)
+    dubbed, timed = dub_segments(tts, phrases, ref)
+    write_transcript(stem, text, phrases, timed=timed)
     write_audio(out_wav, dubbed, SR)
     cleanup_work(base_name)
 
-    print(f"  wrote {out_wav.name} ({duration:.1f}s), {stem.name}.txt/.srt")
+    print(f"  wrote {out_wav.name} ({len(dubbed) / SR:.1f}s), {stem.name}.txt/.srt")
     return out_wav
 
 
