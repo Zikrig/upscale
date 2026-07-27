@@ -12,6 +12,14 @@ source .venv/bin/activate
 
 pip install --upgrade pip
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
-pip install -r requirements.txt
+
+# demucs + runtime deps
+pip install demucs soundfile "numpy<2" tqdm librosa omegaconf rich resampy tabulate scipy
+
+# resemble-enhance pins torch==2.1.1 — install without deps on Python 3.12
+pip install --no-deps --ignore-requires-python "resemble-enhance" --pre
+
+python -c "import torch; import demucs; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())"
+python -c "import resemble_enhance; print('resemble-enhance ok')"
 
 echo "Setup done. Run: ./run.sh"

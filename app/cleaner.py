@@ -1,9 +1,17 @@
 import os
+import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
-from config import INPUT, MODEL_DIR, OUTPUT, TMP_DIR
+from config import MODEL_DIR, OUTPUT, TMP_DIR
+
+PYTHON = sys.executable
+
+
+def _safe_name(name: str) -> str:
+    return re.sub(r"[^\w\-]+", "_", name).strip("_") or "track"
 
 
 def extract_audio(mp3: str, wav: str) -> None:
@@ -27,6 +35,8 @@ def separate_music(audio: str, work_dir: str) -> Path:
     separated_dir = Path(work_dir) / "separated"
     subprocess.run(
         [
+            PYTHON,
+            "-m",
             "demucs",
             "-n",
             "htdemucs",
@@ -59,19 +69,18 @@ def enhance(vocals: Path, output: Path) -> None:
     enhance_in.mkdir(parents=True)
     enhance_out.mkdir(parents=True)
 
-    shutil.copy2(vocals, enhance_in / vocals.name)
+    # flat name without spaces — resemble-enhance walks directories
+    src = enhance_in / "vocals.wav"
+    shutil.copy2(vocals, src)
 
-    subprocess.run(
-        [
-            "resemble-enhance",
-            str(enhance_in),
-            str(enhance_out),
-        ],
-        check=True,
-        env={**os.environ, "HF_HOME": MODEL_DIR, "TORCH_HOME": MODEL_DIR},
-    )
+    env = {**os.environ, "HF_HOME": MODEL_DIR, "TORCH_HOME": MODEL_DIR}
+    cmd = shutil.which("resemble_enhance") or shutil.which("resemble-enhance")
+    if not cmd:
+        raise FileNotFoundError("resemble_enhance CLI not found in PATH")
 
-    enhanced_files = list(enhance_out.glob("*.wav"))
+    subprocess.run([cmd, str(enhance_in), str(enhance_out)], check=True, env=env)
+
+    enhanced_files = list(enhance_out.rglob("*.wav"))
     if not enhanced_files:
         raise FileNotFoundError(f"No enhanced audio in {enhance_out}")
 
@@ -80,13 +89,16 @@ def enhance(vocals: Path, output: Path) -> None:
 
 
 def process(filename: str) -> None:
-    base = Path(filename).stem
+    original = Path(filename)
+    base = _safe_name(original.stem)
     work_dir = Path(TMP_DIR) / base
     wav = work_dir / f"{base}.wav"
 
+    if work_dir.exists():
+        shutil.rmtree(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    extract_audio(filename, str(wav))
+    extract_audio(str(original), str(wav))
     vocals = separate_music(str(wav), str(work_dir))
     enhance(vocals, Path(OUTPUT) / f"{base}_clean.wav")
 

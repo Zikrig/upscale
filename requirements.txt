@@ -1,5 +1,10 @@
 demucs
-resemble-enhance
 soundfile
-numpy
+numpy<2
 tqdm
+librosa
+omegaconf
+rich
+resampy
+tabulate
+scipy
