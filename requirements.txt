@@ -8,3 +8,7 @@ rich
 resampy
 tabulate
 scipy
+matplotlib
+pandas
+celluloid
+ptflops
