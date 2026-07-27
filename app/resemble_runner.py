@@ -75,7 +75,7 @@ def _load_enhancer(device: str):
     from resemble_enhance.enhancer.enhancer import Enhancer
     from resemble_enhance.enhancer.hparams import HParams
 
-    run_dir = download(None)
+    run_dir = download()
     hp = HParams.load(run_dir)
     enhancer = Enhancer(hp)
     path = run_dir / "ds" / "G" / "default" / "mp_rank_00_model_states.pt"
