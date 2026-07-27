@@ -170,6 +170,7 @@ def write_transcript(base: Path, text: str, segments: list[dict]) -> None:
 
 def load_xtts():
     warnings.filterwarnings("ignore")
+    _patch_transformers_isin()
     from TTS.api import TTS
 
     device = _device()
@@ -177,6 +178,18 @@ def load_xtts():
     tts = TTS(XTTS_MODEL, progress_bar=False)
     tts.to(device)
     return tts
+
+
+def _patch_transformers_isin() -> None:
+    """coqui-tts expects isin_mps_friendly; missing in transformers 5.x."""
+    try:
+        from transformers import pytorch_utils
+        import torch
+
+        if not hasattr(pytorch_utils, "isin_mps_friendly"):
+            pytorch_utils.isin_mps_friendly = torch.isin
+    except Exception:
+        pass
 
 
 def xtts_speak(tts, text: str, speaker_wav: Path, out_path: Path) -> None:

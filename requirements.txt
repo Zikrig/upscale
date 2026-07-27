@@ -14,3 +14,4 @@ celluloid
 ptflops
 faster-whisper
 coqui-tts
+transformers>=4.43,<5

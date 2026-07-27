@@ -15,7 +15,7 @@ pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu124
 
 # demucs + resemble-enhance runtime deps (package itself installed --no-deps)
 pip install demucs soundfile "numpy<2" tqdm librosa omegaconf rich resampy tabulate scipy \
-    matplotlib pandas celluloid ptflops faster-whisper "coqui-tts"
+    matplotlib pandas celluloid ptflops faster-whisper "coqui-tts" "transformers>=4.43,<5"
 
 # resemble-enhance pins torch==2.1.1 — install without deps on Python 3.12
 pip install --no-deps --ignore-requires-python "resemble-enhance" --pre

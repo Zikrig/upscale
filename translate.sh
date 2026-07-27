@@ -9,8 +9,8 @@ export HF_HOME="$(pwd)/models"
 export XDG_CACHE_HOME="$(pwd)/models"
 export COQUI_TOS_AGREED=1
 
-python -c "import faster_whisper, TTS" 2>/dev/null || \
-  pip install faster-whisper "coqui-tts"
+# coqui-tts needs transformers 4.x (5.x removed isin_mps_friendly)
+pip install -q faster-whisper "coqui-tts" "transformers>=4.43,<5"
 
 cd app
 python3 translate.py
