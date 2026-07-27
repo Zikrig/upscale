@@ -9,8 +9,13 @@ export HF_HOME="$(pwd)/models"
 export XDG_CACHE_HOME="$(pwd)/models"
 export COQUI_TOS_AGREED=1
 
-# coqui-tts needs transformers 4.x (5.x removed isin_mps_friendly)
+# free leftover temp from previous runs
+rm -rf /tmp/dub_* 2>/dev/null || true
+
 pip install -q faster-whisper "coqui-tts" "transformers>=4.43,<5"
 
 cd app
-python3 translate.py
+# Examples:
+#   python3 translate.py --force
+#   python3 translate.py --only bitards --force
+python3 translate.py "$@"
