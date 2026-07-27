@@ -10,15 +10,10 @@ import torchaudio
 from config import MODEL_DIR
 
 
-def _ensure_deepspeed() -> None:
-    """Use real deepspeed if installed; otherwise provide a minimal stub."""
-    try:
-        import deepspeed  # noqa: F401
-        import deepspeed.accelerator  # noqa: F401
-
-        return
-    except Exception:
-        pass
+def _stub_deepspeed() -> None:
+    """Resemble-enhance only needs deepspeed symbols at import time for training code paths.
+    Real deepspeed pulls Triton JIT and often fails without python3-dev — stub is enough for inference.
+    """
 
     class DeepSpeedConfig:
         def __init__(self, *args, **kwargs):
@@ -45,11 +40,23 @@ def _ensure_deepspeed() -> None:
     runtime_utils = types.ModuleType("deepspeed.runtime.utils")
     runtime_utils.clip_grad_norm_ = lambda *a, **k: None
 
+    # Force-overwrite even if a broken real deepspeed is installed
     sys.modules["deepspeed"] = deepspeed
     sys.modules["deepspeed.accelerator"] = accelerator
     sys.modules["deepspeed.runtime"] = runtime
     sys.modules["deepspeed.runtime.engine"] = runtime_engine
     sys.modules["deepspeed.runtime.utils"] = runtime_utils
+
+
+def _patch_denoiser_train_import() -> None:
+    """Load Denoiser/HParams without importing training Engine stack."""
+    from resemble_enhance.denoiser.denoiser import Denoiser
+    from resemble_enhance.denoiser.hparams import HParams
+
+    train = types.ModuleType("resemble_enhance.denoiser.train")
+    train.Denoiser = Denoiser
+    train.HParams = HParams
+    sys.modules["resemble_enhance.denoiser.train"] = train
 
 
 def _setup_cache() -> None:
@@ -61,7 +68,8 @@ def _setup_cache() -> None:
 @lru_cache(maxsize=1)
 def _load_enhancer(device: str):
     _setup_cache()
-    _ensure_deepspeed()
+    _stub_deepspeed()
+    _patch_denoiser_train_import()
 
     from resemble_enhance.enhancer.download import download
     from resemble_enhance.enhancer.enhancer import Enhancer
