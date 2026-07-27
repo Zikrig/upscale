@@ -1,11 +1,11 @@
-import os
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-from config import MODEL_DIR, OUTPUT, TMP_DIR
+from config import OUTPUT, TMP_DIR
+from resemble_runner import run_enhance
 
 PYTHON = sys.executable
 
@@ -58,34 +58,7 @@ def separate_music(audio: str, work_dir: str) -> Path:
 
 
 def enhance(vocals: Path, output: Path) -> None:
-    enhance_in = Path(TMP_DIR) / "enhance_in"
-    enhance_out = Path(TMP_DIR) / "enhance_out"
-
-    if enhance_in.exists():
-        shutil.rmtree(enhance_in)
-    if enhance_out.exists():
-        shutil.rmtree(enhance_out)
-
-    enhance_in.mkdir(parents=True)
-    enhance_out.mkdir(parents=True)
-
-    # flat name without spaces — resemble-enhance walks directories
-    src = enhance_in / "vocals.wav"
-    shutil.copy2(vocals, src)
-
-    env = {**os.environ, "HF_HOME": MODEL_DIR, "TORCH_HOME": MODEL_DIR}
-    cmd = shutil.which("resemble_enhance") or shutil.which("resemble-enhance")
-    if not cmd:
-        raise FileNotFoundError("resemble_enhance CLI not found in PATH")
-
-    subprocess.run([cmd, str(enhance_in), str(enhance_out)], check=True, env=env)
-
-    enhanced_files = list(enhance_out.rglob("*.wav"))
-    if not enhanced_files:
-        raise FileNotFoundError(f"No enhanced audio in {enhance_out}")
-
-    output.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(enhanced_files[0]), str(output))
+    run_enhance(vocals, output)
 
 
 def process(filename: str) -> None:
