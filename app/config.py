@@ -8,6 +8,11 @@ TRANSLATED = str(ROOT / "output" / "translated")
 MODEL_DIR = str(ROOT / "models")
 TMP_DIR = "/tmp"
 
-# Whisper: large-v3 is best quality; use medium if VRAM is tight
 WHISPER_MODEL = "large-v3"
-TTS_VOICE = "en-US-AndrewNeural"
+XTTS_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
+
+# Reference clip for voice cloning (seconds)
+REF_SECONDS = 12.0
+# Soft limits for time-stretch (beyond this audio quality degrades)
+STRETCH_MIN = 0.65
+STRETCH_MAX = 1.8

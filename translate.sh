@@ -7,10 +7,10 @@ source .venv/bin/activate
 export TORCH_HOME="$(pwd)/models"
 export HF_HOME="$(pwd)/models"
 export XDG_CACHE_HOME="$(pwd)/models"
+export COQUI_TOS_AGREED=1
 
-# ensure translate deps
-python -c "import faster_whisper, edge_tts" 2>/dev/null || \
-  pip install faster-whisper edge-tts
+python -c "import faster_whisper, TTS" 2>/dev/null || \
+  pip install faster-whisper "coqui-tts"
 
 cd app
 python3 translate.py
