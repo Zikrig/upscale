@@ -11,17 +11,50 @@ from config import MODEL_DIR
 
 
 def _stub_deepspeed() -> None:
-    if "deepspeed" in sys.modules:
-        return
-
-    deepspeed = types.ModuleType("deepspeed")
+    """Minimal deepspeed shim so resemble-enhance imports without the real package."""
 
     class DeepSpeedConfig:
         def __init__(self, *args, **kwargs):
             pass
 
+    class _Accelerator:
+        def communication_backend_name(self):
+            return "nccl"
+
+    class DeepSpeedEngine(torch.nn.Module):
+        def __init__(self, *args, **kwargs):
+            super().__init__()
+
+    deepspeed = types.ModuleType("deepspeed")
     deepspeed.DeepSpeedConfig = DeepSpeedConfig
+    deepspeed.init_distributed = lambda *a, **k: None
+    deepspeed._resemble_stub = True
+
+    accelerator = types.ModuleType("deepspeed.accelerator")
+    accelerator.get_accelerator = lambda: _Accelerator()
+
+    runtime = types.ModuleType("deepspeed.runtime")
+    runtime_engine = types.ModuleType("deepspeed.runtime.engine")
+    runtime_engine.DeepSpeedEngine = DeepSpeedEngine
+    runtime_utils = types.ModuleType("deepspeed.runtime.utils")
+    runtime_utils.clip_grad_norm_ = lambda *a, **k: None
+
     sys.modules["deepspeed"] = deepspeed
+    sys.modules["deepspeed.accelerator"] = accelerator
+    sys.modules["deepspeed.runtime"] = runtime
+    sys.modules["deepspeed.runtime.engine"] = runtime_engine
+    sys.modules["deepspeed.runtime.utils"] = runtime_utils
+
+
+def _patch_denoiser_train_import() -> None:
+    """Avoid denoiser.train -> Engine/DeepSpeed import chain for inference."""
+    from resemble_enhance.denoiser.denoiser import Denoiser
+    from resemble_enhance.denoiser.hparams import HParams
+
+    train = types.ModuleType("resemble_enhance.denoiser.train")
+    train.Denoiser = Denoiser
+    train.HParams = HParams
+    sys.modules["resemble_enhance.denoiser.train"] = train
 
 
 def _setup_cache() -> None:
@@ -34,6 +67,7 @@ def _setup_cache() -> None:
 def _load_enhancer(device: str):
     _setup_cache()
     _stub_deepspeed()
+    _patch_denoiser_train_import()
 
     from resemble_enhance.enhancer.download import download
     from resemble_enhance.enhancer.enhancer import Enhancer
