@@ -280,7 +280,7 @@ def burn_subtitles(mp4: Path, srt: Path, out_mp4: Path) -> None:
     )
 
 
-def process_video(mp4: Path, force: bool = False) -> None:
+def process_video(mp4: Path, force: bool = False, burn: bool = False) -> None:
     base = _safe_name(mp4.stem)
     srt_path = Path(SUBS_LONG_DIR) / f"{base}.srt"
     txt_path = Path(SUBS_LONG_DIR) / f"{base}.txt"
@@ -288,7 +288,10 @@ def process_video(mp4: Path, force: bool = False) -> None:
     work = Path(TMP_DIR) / f"subs_{base}"
     wav = work / "audio.wav"
 
-    if srt_path.exists() and burned.exists() and burned.stat().st_size > 10_000 and not force:
+    output_ready = srt_path.exists() and txt_path.exists()
+    if burn:
+        output_ready = output_ready and burned.exists() and burned.stat().st_size > 10_000
+    if output_ready and not force:
         print(f"Skip {mp4.name} (exists)")
         return
 
@@ -307,9 +310,10 @@ def process_video(mp4: Path, force: bool = False) -> None:
         write_srt(srt_path, cues)
         txt_path.write_text(full_text + "\n", encoding="utf-8")
         print(f"  wrote {srt_path.name}")
-        print("  burning subtitles into video…")
-        burn_subtitles(mp4, srt_path, burned)
-        print(f"  wrote {burned.name}")
+        if burn:
+            print("  burning subtitles into video…")
+            burn_subtitles(mp4, srt_path, burned)
+            print(f"  wrote {burned.name}")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -318,6 +322,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate short subtitles for MP4 videos")
     parser.add_argument("--only", default="", help="Substring filter for filenames")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--burn",
+        action="store_true",
+        help="Also create videos with subtitles burned in",
+    )
     args = parser.parse_args()
 
     Path(SUBS_LONG_DIR).mkdir(parents=True, exist_ok=True)
@@ -332,7 +341,7 @@ def main() -> None:
         sys.exit(1)
 
     for mp4 in videos:
-        process_video(mp4, force=args.force)
+        process_video(mp4, force=args.force, burn=args.burn)
 
     print("Done")
 

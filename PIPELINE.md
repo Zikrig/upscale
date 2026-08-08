@@ -22,9 +22,9 @@
 
 Выход:
 - `output/subs/*.srt` + `*.txt`
-- `output/subs_burned/*_subs.mp4` (burn-in)
+- burn-in MP4 создаётся только по явному параметру `--burn`
 
-Фразы: ~2.0–2.5 с, до ~42 символов.
+Фразы: цельные, предпочтительно до ~160 символов, абсолютный максимум — 350.
 
 ### 1. Загрузить код на сервер (если ещё нет git)
 
@@ -78,13 +78,10 @@ sudo apt install -y ffmpeg fonts-dejavu-core
 ```bash
 cd ~/upscale
 source .venv/bin/activate
-bash subs.sh
-
-# один файл
-bash subs.sh --only p1 --force
-
-# пересобрать всё
 bash subs.sh --force
+
+# при необходимости отдельно включить burn-in
+bash subs.sh --force --burn
 ```
 
 Первый запуск скачает Whisper `large-v3` в `~/upscale/models/whisper`.
@@ -94,9 +91,9 @@ bash subs.sh --force
 ```powershell
 $pem = "C:\Users\Ф\Desktop\projects\upscale\ttttest-185642-zigrik.pem"
 $dest = "C:\Users\Ф\Desktop\projects\upscale\output"
-New-Item -ItemType Directory -Force -Path "$dest\subs", "$dest\subs_burned" | Out-Null
+New-Item -ItemType Directory -Force -Path "$dest\subs_long" | Out-Null
 
-scp -i $pem -r ubuntu@195.209.214.86:~/upscale/output/subs/. "$dest\subs\"
+scp -i $pem -r ubuntu@195.209.214.86:~/upscale/output/subs_long/. "$dest\subs_long\"
 scp -i $pem -o ServerAliveInterval=30 -r `
   ubuntu@195.209.214.86:~/upscale/output/subs_burned/. `
   "$dest\subs_burned\"
