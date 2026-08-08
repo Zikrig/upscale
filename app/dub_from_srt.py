@@ -133,7 +133,7 @@ def add_crossfade(
         ramp = np.linspace(0.0, 1.0, fade, dtype=np.float32)
         timeline[start - fade : start] *= 1.0 - ramp
         timeline[start - fade : start] += audio[:fade] * ramp
-        timeline[start : end] += audio[fade:]
+        timeline[start + fade : end] += audio[fade:]
     else:
         timeline[start:end] += audio
     return timeline
