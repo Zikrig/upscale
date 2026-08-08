@@ -1,5 +1,7 @@
 output/
 !output/.gitkeep
+video_input/*
+!video_input/.gitkeep
 models/*
 !models/.gitkeep
 __pycache__/

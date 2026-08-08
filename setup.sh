@@ -2,7 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-mkdir -p input output models
+mkdir -p input output models video_input output/subs output/subs_burned
 
 sudo apt update
 sudo apt install -y ffmpeg python3-venv python3-pip
