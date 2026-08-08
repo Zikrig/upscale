@@ -209,7 +209,6 @@ def xtts_speak_array(tts, text: str, speaker_wav: Path) -> np.ndarray:
         text=text,
         speaker_wav=str(speaker_wav),
         language="en",
-        split_sentences=True,
     )
     audio = np.asarray(wav, dtype=np.float32)
     if audio.ndim > 1:

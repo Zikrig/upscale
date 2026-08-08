@@ -2,7 +2,7 @@
 
 Инстанс: `rtx3090-1.8.32.160` — **8 vCPU, 32 GB RAM, 160 GB disk, 1× RTX 3090**.
 
-Сервер: `ubuntu@195.209.214.89`  
+Сервер: `ubuntu@195.209.214.86`  
 Ключ (на ПК): `C:\Users\Ф\Desktop\projects\upscale\ttttest-185642-zigrik.pem`
 
 Локальные видео:
@@ -46,15 +46,15 @@ chmod +x subs.sh
 ```powershell
 $pem = "C:\Users\Ф\Desktop\projects\upscale\ttttest-185642-zigrik.pem"
 $src = "C:\Users\Ф\Desktop\фильмы\FINISHED\vibecoder\finale\to_translate"
-ssh -i $pem ubuntu@195.209.214.89 "mkdir -p ~/upscale/video_input"
+ssh -i $pem ubuntu@195.209.214.86 "mkdir -p ~/upscale/video_input"
 
 # все файлы
 scp -i $pem -o ServerAliveInterval=30 `
   "$src\*.mp4" `
-  ubuntu@195.209.214.89:~/upscale/video_input/
+  ubuntu@195.209.214.86:~/upscale/video_input/
 
 # или по одному (если диск/сеть узкие)
-# scp -i $pem "$src\to_translate_p1.mp4" ubuntu@195.209.214.89:~/upscale/video_input/
+# scp -i $pem "$src\to_translate_p1.mp4" ubuntu@195.209.214.86:~/upscale/video_input/
 ```
 
 Проверка на сервере:
@@ -96,9 +96,9 @@ $pem = "C:\Users\Ф\Desktop\projects\upscale\ttttest-185642-zigrik.pem"
 $dest = "C:\Users\Ф\Desktop\projects\upscale\output"
 New-Item -ItemType Directory -Force -Path "$dest\subs", "$dest\subs_burned" | Out-Null
 
-scp -i $pem -r ubuntu@195.209.214.89:~/upscale/output/subs/. "$dest\subs\"
+scp -i $pem -r ubuntu@195.209.214.86:~/upscale/output/subs/. "$dest\subs\"
 scp -i $pem -o ServerAliveInterval=30 -r `
-  ubuntu@195.209.214.89:~/upscale/output/subs_burned/. `
+  ubuntu@195.209.214.86:~/upscale/output/subs_burned/. `
   "$dest\subs_burned\"
 ```
 
@@ -115,12 +115,35 @@ rm -rf /tmp/subs_*
 
 ---
 
-## Этап 2 — EN-аудио (задел, без клона)
+## Этап 2 — EN-аудио из готовых `subs_en` (без клона)
 
-План:
-1. Перевести текст сегментов SRT на английский (или Whisper `task=translate`).
-2. Озвучить **edge-tts** (нейтральный EN-голос, без клона).
-3. Уложить каждый кусок **в то же временное окно**, что у SRT (лёгкий trim/pad), чтобы длина = исходному видео.
+Теперь английский текст берётся **дословно из `output/subs_en/*.srt`**.
+Whisper и повторный перевод на этом этапе не используются.
+
+На ПК загрузить исправленные субтитры:
+
+```powershell
+$pem = "C:\Users\Ф\Desktop\projects\upscale\ttttest-185642-zigrik.pem"
+scp -i $pem -r `
+  "C:\Users\Ф\Desktop\projects\upscale\output\subs_en" `
+  ubuntu@195.209.214.86:~/upscale/output/
+```
+
+На сервере установить TTS-зависимость и озвучить первый фрагмент:
+
+```bash
+cd ~/upscale
+source .venv/bin/activate
+pip install edge-tts
+chmod +x dub_en.sh
+bash dub_en.sh --only p1
+```
+
+Результат:
+`output/dub_en/to_translate_p1_en.wav`
+
+По умолчанию используется нейтральный голос `en-US-AriaNeural`.
+Другой голос можно указать параметром `--voice`.
 
 Хронометраж видео **не меняется** (нужно для lip-sync).
 

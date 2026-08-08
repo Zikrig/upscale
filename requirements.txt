@@ -13,5 +13,6 @@ pandas
 celluloid
 ptflops
 faster-whisper
+edge-tts
 coqui-tts
 transformers>=4.43,<5
