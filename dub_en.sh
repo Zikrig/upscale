@@ -7,7 +7,7 @@ source .venv/bin/activate
 export PYTHONUNBUFFERED=1
 
 only=""
-voice="en-US-AriaNeural"
+voice="en-US-BrianNeural"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --only) only="${2:?missing value for --only}"; shift 2 ;;

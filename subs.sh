@@ -8,7 +8,7 @@ export TORCH_HOME="$(pwd)/models"
 export HF_HOME="$(pwd)/models"
 export XDG_CACHE_HOME="$(pwd)/models"
 
-mkdir -p video_input output/subs output/subs_burned models
+mkdir -p video_input output/subs output/subs_burned output/subs_long output/subs_long_burned models
 rm -rf /tmp/subs_* 2>/dev/null || true
 
 df -h / | tail -1

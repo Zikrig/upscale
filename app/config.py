@@ -8,6 +8,8 @@ TRANSLATED = str(ROOT / "output" / "translated")
 VIDEO_INPUT = str(ROOT / "video_input")
 SUBS_DIR = str(ROOT / "output" / "subs")
 SUBS_BURNED_DIR = str(ROOT / "output" / "subs_burned")
+SUBS_LONG_DIR = str(ROOT / "output" / "subs_long")
+SUBS_LONG_BURNED_DIR = str(ROOT / "output" / "subs_long_burned")
 MODEL_DIR = str(ROOT / "models")
 TMP_DIR = "/tmp"
 
@@ -22,8 +24,8 @@ MERGE_TARGET_SEC = 6.0
 MERGE_MAX_SEC = 14.0
 MERGE_MAX_CHARS = 320
 
-# Video subtitles: short, roughly equal cues
-SUB_TARGET_SEC = 2.3
-SUB_MAX_SEC = 3.5
-SUB_MIN_SEC = 0.7
-SUB_MAX_CHARS = 42
+# Video subtitles: coherent phrases
+SUB_TARGET_SEC = 160
+SUB_MAX_SEC = 350
+SUB_MIN_SEC = 0
+SUB_MAX_CHARS = 350

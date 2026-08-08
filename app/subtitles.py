@@ -1,6 +1,7 @@
-"""Stage 1: short, roughly equal-length subtitles for MP4 videos.
+"""Stage 1: coherent phrase subtitles for MP4 videos.
 
-Whisper ASR (word timestamps) → pack cues → .srt + burn-in MP4.
+Whisper ASR (word timestamps) → punctuation-aware phrase packing
+→ .srt + burn-in MP4.
 No voice clone. One video at a time (disk/VRAM limits).
 """
 
@@ -15,12 +16,8 @@ from pathlib import Path
 
 from config import (
     MODEL_DIR,
-    SUB_MAX_CHARS,
-    SUB_MAX_SEC,
-    SUB_MIN_SEC,
-    SUB_TARGET_SEC,
-    SUBS_BURNED_DIR,
-    SUBS_DIR,
+    SUBS_LONG_BURNED_DIR,
+    SUBS_LONG_DIR,
     TMP_DIR,
     VIDEO_INPUT,
     WHISPER_MODEL,
@@ -126,16 +123,21 @@ def transcribe_words(wav: Path) -> tuple[list[dict], str]:
 
 
 _BREAK_CHARS = set(".!?…,;:")
+_HARD_MAX_CHARS = 350
+_PREFERRED_MAX_CHARS = 160
 
 
 def pack_cues(
     words: list[dict],
-    target_sec: float = SUB_TARGET_SEC,
-    max_sec: float = SUB_MAX_SEC,
-    min_sec: float = SUB_MIN_SEC,
-    max_chars: int = SUB_MAX_CHARS,
+    preferred_chars: int = _PREFERRED_MAX_CHARS,
+    hard_max_chars: int = _HARD_MAX_CHARS,
 ) -> list[dict]:
-    """Pack words into short, roughly equal subtitle cues."""
+    """Pack words into coherent phrases with punctuation-aware boundaries.
+
+    We prefer a boundary around 160 characters, especially after commas or
+    sentence punctuation. A cue may exceed that preference when necessary,
+    but never exceeds 350 characters. Word timestamps are retained.
+    """
     if not words:
         return []
 
@@ -167,50 +169,68 @@ def pack_cues(
 
         trial = buf + [w]
         trial_text = re.sub(r"\s+", " ", " ".join(x["word"] for x in trial)).strip()
-        trial_dur = trial[-1]["end"] - trial[0]["start"]
-        gap = w["start"] - buf_end()
-        last_ch = buf_text()[-1] if buf_text() else ""
+        current_text = buf_text()
+        current_last = current_text[-1:] if current_text else ""
+        word_last = w["word"].rstrip()[-1:] if w["word"].rstrip() else ""
 
-        should_break = False
-        if trial_dur > max_sec or len(trial_text) > max_chars:
-            should_break = True
-        elif trial_dur >= target_sec and (last_ch in _BREAK_CHARS or gap >= 0.28):
-            should_break = True
-        elif gap >= 0.55 and trial_dur >= min_sec:
-            should_break = True
-
-        if should_break:
+        if len(current_text) >= 80 and current_last in _BREAK_CHARS:
             flush()
             buf.append(w)
-        else:
+            continue
+
+        # The hard limit is absolute: never split inside a word.
+        if len(trial_text) > hard_max_chars:
+            flush()
             buf.append(w)
+            continue
+
+        buf.append(w)
+        length = len(trial_text)
+
+        # Finish complete thoughts as soon as punctuation gives us a clean
+        # boundary. Commas are preferred, but not before a useful phrase.
+        if length >= preferred_chars and word_last in _BREAK_CHARS:
+            flush()
+        elif length >= preferred_chars and current_last in _BREAK_CHARS:
+            flush()
+        elif length >= preferred_chars and word_last in ".!?":
+            flush()
 
     flush()
 
-    # Merge micro-cues into neighbors
+    # Do not leave one or two words stranded after a punctuation split.
     if not cues:
         return []
 
-    merged: list[dict] = [dict(cues[0])]
-    for cue in cues[1:]:
-        prev = merged[-1]
-        prev_dur = prev["end"] - prev["start"]
-        cur_dur = cue["end"] - cue["start"]
-        combined = f"{prev['text']} {cue['text']}".strip()
-        if (prev_dur < min_sec or cur_dur < min_sec) and len(combined) <= max_chars + 12:
-            prev["end"] = cue["end"]
-            prev["text"] = combined
-        else:
-            merged.append(dict(cue))
+    merged: list[dict] = []
+    for cue in cues:
+        if merged and len(cue["text"].split()) <= 2:
+            combined = f"{merged[-1]['text']} {cue['text']}".strip()
+            if len(combined) <= hard_max_chars:
+                merged[-1]["end"] = cue["end"]
+                merged[-1]["text"] = combined
+                continue
+        merged.append(dict(cue))
 
-    # Fix overlapping / zero-length
+    # A final micro-cue is joined backward whenever the hard limit permits it.
+    if len(merged) > 1 and len(merged[-1]["text"].split()) <= 2:
+        combined = f"{merged[-2]['text']} {merged[-1]['text']}".strip()
+        if len(combined) <= hard_max_chars:
+            merged[-2]["end"] = merged[-1]["end"]
+            merged[-2]["text"] = combined
+            merged.pop()
+
+    # Fix overlapping / zero-length timestamps.
     for i, cue in enumerate(merged):
         if cue["end"] <= cue["start"]:
             cue["end"] = cue["start"] + 0.4
         if i + 1 < len(merged) and cue["end"] > merged[i + 1]["start"]:
             cue["end"] = max(cue["start"] + 0.2, merged[i + 1]["start"] - 0.02)
 
-    print(f"  packed {len(merged)} cues (target≈{target_sec}s, max_chars={max_chars})")
+    print(
+        f"  packed {len(merged)} coherent cues "
+        f"(preferred~{preferred_chars} chars, hard_max={hard_max_chars})"
+    )
     return merged
 
 
@@ -262,9 +282,9 @@ def burn_subtitles(mp4: Path, srt: Path, out_mp4: Path) -> None:
 
 def process_video(mp4: Path, force: bool = False) -> None:
     base = _safe_name(mp4.stem)
-    srt_path = Path(SUBS_DIR) / f"{base}.srt"
-    txt_path = Path(SUBS_DIR) / f"{base}.txt"
-    burned = Path(SUBS_BURNED_DIR) / f"{base}_subs.mp4"
+    srt_path = Path(SUBS_LONG_DIR) / f"{base}.srt"
+    txt_path = Path(SUBS_LONG_DIR) / f"{base}.txt"
+    burned = Path(SUBS_LONG_BURNED_DIR) / f"{base}_subs.mp4"
     work = Path(TMP_DIR) / f"subs_{base}"
     wav = work / "audio.wav"
 
@@ -300,8 +320,8 @@ def main() -> None:
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
-    Path(SUBS_DIR).mkdir(parents=True, exist_ok=True)
-    Path(SUBS_BURNED_DIR).mkdir(parents=True, exist_ok=True)
+    Path(SUBS_LONG_DIR).mkdir(parents=True, exist_ok=True)
+    Path(SUBS_LONG_BURNED_DIR).mkdir(parents=True, exist_ok=True)
 
     videos = sorted(Path(VIDEO_INPUT).glob("*.mp4"))
     if args.only:

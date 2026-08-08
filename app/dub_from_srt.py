@@ -188,7 +188,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--srt", type=Path)
     parser.add_argument("--out", type=Path)
-    parser.add_argument("--voice", default="en-US-AriaNeural")
+    parser.add_argument("--voice", default="en-US-BrianNeural")
     args = parser.parse_args()
 
     if not args.srt:
